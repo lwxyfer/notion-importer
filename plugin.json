@@ -1,0 +1,34 @@
+{
+  "name": "notion-importer",
+  "author": "FEUAZUR",
+  "url": "https://github.com/FEUAZUR/notion-importer",
+  "version": "1.0.0",
+  "minAppVersion": "3.0.12",
+  "backends": [
+    "windows",
+    "linux",
+    "darwin",
+    "docker",
+    "ios",
+    "android"
+  ],
+  "frontends": [
+    "desktop",
+    "browser-desktop",
+    "desktop-window"
+  ],
+  "displayName": {
+    "default": "Notion Importer",
+    "en_US": "Notion Importer"
+  },
+  "description": {
+    "default": "Import Notion HTML exports into SiYuan with full database, media, and hierarchy support",
+    "en_US": "Import Notion HTML exports into SiYuan with full database, media, and hierarchy support"
+  },
+  "readme": {
+    "en_US": "README.md"
+  },
+  "keywords": [
+    "plugin", "import", "notion", "database", "migration"
+  ]
+}
