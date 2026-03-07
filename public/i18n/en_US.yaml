@@ -1,0 +1,42 @@
+---
+addTopBarIcon: Import Data
+helloPlugin: siyuan-ext-importer loaded
+byePlugin: siyuan-ext-importer exited
+dialogTitle: Import Data into SiYuan
+notebook: Notebook
+pleaseSelectNotebook: Select the notebook to import into
+startCollectFilePreImport: Collecting files before import...
+startImport: Starting import...
+importFinish: Import completed.
+import: Import
+
+# Phases
+phaseCollecting: Collecting files...
+phaseCreating: Creating documents...
+phaseWriting: Writing content & uploading media...
+phaseDone: Import complete
+
+# UI labels
+selectFile: Select your Notion HTML export (.zip)
+dropFileHere: Drop ZIP file here or click to browse
+noFileSelected: No file selected
+importButton: Start Import
+importing: Importing...
+closeButton: Close
+
+# Log panel
+logSectionTitle: Import Log
+errorsSectionTitle: Errors
+
+# Summary
+summaryTitle: Import Summary
+docsImported: Documents imported
+attachmentsUploaded: Attachments uploaded
+databasesCreated: Databases created
+errorsCount: Errors
+importSuccess: Import completed successfully!
+importWithErrors: "Import completed with errors"
+
+# Validation
+pleaseSelectFile: Please select a ZIP file first.
+pleaseSelectNotebookFirst: Please select a notebook first.

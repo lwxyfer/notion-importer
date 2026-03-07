@@ -1,0 +1,28 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./tests-dist",
+    "rootDir": ".",
+    "declaration": false,
+    "sourceMap": false,
+    "skipLibCheck": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "verbatimModuleSyntax": false
+  },
+  "include": [
+    "tests/suite.ts",
+    "src/libs/filesystem.ts",
+    "src/libs/util.ts",
+    "src/libs/zip.ts",
+    "src/libs/z-worker-inline.js",
+    "src/libs/formats/notion/notion-types.ts",
+    "src/libs/formats/notion/notion-utils.ts",
+    "src/libs/formats/notion/parse-info.ts",
+    "src/libs/formats/notion/export-parser.ts",
+    "src/libs/formats/notion/database-utils.ts",
+    "src/libs/formats/notion/notion-markdown-transforms.ts",
+    "src/libs/formats/notion/notion-normalizer.ts"
+  ]
+}

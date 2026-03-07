@@ -1,0 +1,167 @@
+#helloPanel {
+    border: 1px rgb(189, 119, 119) dashed;
+}
+
+:root,
+html[data-theme-mode="light"] {
+    --notion-importer-card-border: rgba(55, 53, 47, 0.12);
+    --notion-importer-card-rule: rgba(55, 53, 47, 0.75);
+    --notion-importer-block-color-gray-bg: rgb(240, 239, 237);
+    --notion-importer-block-color-gray-fg: rgb(55, 53, 47);
+    --notion-importer-block-color-brown-bg: rgb(244, 238, 238);
+    --notion-importer-block-color-brown-fg: rgb(100, 71, 58);
+    --notion-importer-block-color-orange-bg: rgb(251, 236, 221);
+    --notion-importer-block-color-orange-fg: rgb(211, 93, 0);
+    --notion-importer-block-color-yellow-bg: rgb(251, 243, 219);
+    --notion-importer-block-color-yellow-fg: rgb(173, 129, 6);
+    --notion-importer-block-color-teal-bg: rgb(237, 243, 236);
+    --notion-importer-block-color-teal-fg: rgb(13, 116, 83);
+    --notion-importer-block-color-blue-bg: rgb(231, 243, 248);
+    --notion-importer-block-color-blue-fg: rgb(11, 110, 153);
+    --notion-importer-block-color-purple-bg: rgb(244, 240, 247);
+    --notion-importer-block-color-purple-fg: rgb(105, 64, 165);
+    --notion-importer-block-color-pink-bg: rgb(252, 241, 246);
+    --notion-importer-block-color-pink-fg: rgb(173, 26, 114);
+    --notion-importer-block-color-red-bg: rgb(253, 235, 236);
+    --notion-importer-block-color-red-fg: rgb(224, 62, 62);
+}
+
+html[data-theme-mode="dark"] {
+    --notion-importer-card-border: rgba(255, 255, 255, 0.08);
+    --notion-importer-card-rule: rgba(240, 239, 237, 0.92);
+    --notion-importer-block-color-gray-bg: rgb(56, 56, 54);
+    --notion-importer-block-color-gray-fg: rgb(240, 239, 237);
+    --notion-importer-block-color-brown-bg: rgb(74, 58, 49);
+    --notion-importer-block-color-brown-fg: rgb(244, 238, 238);
+    --notion-importer-block-color-orange-bg: rgb(92, 59, 35);
+    --notion-importer-block-color-orange-fg: rgb(251, 236, 221);
+    --notion-importer-block-color-yellow-bg: rgb(90, 78, 31);
+    --notion-importer-block-color-yellow-fg: rgb(251, 243, 219);
+    --notion-importer-block-color-teal-bg: rgb(28, 64, 58);
+    --notion-importer-block-color-teal-fg: rgb(231, 243, 236);
+    --notion-importer-block-color-blue-bg: rgb(32, 60, 85);
+    --notion-importer-block-color-blue-fg: rgb(231, 243, 248);
+    --notion-importer-block-color-purple-bg: rgb(68, 49, 88);
+    --notion-importer-block-color-purple-fg: rgb(244, 240, 247);
+    --notion-importer-block-color-pink-bg: rgb(78, 44, 60);
+    --notion-importer-block-color-pink-fg: rgb(252, 241, 246);
+    --notion-importer-block-color-red-bg: rgb(84, 44, 42);
+    --notion-importer-block-color-red-fg: rgb(253, 235, 236);
+}
+
+.protyle-wysiwyg .sb[style*="--notion-importer-block-color-"] {
+    position: relative;
+    border-radius: 14px;
+    padding: 6px 14px 6px 20px;
+    box-shadow: inset 0 0 0 1px var(--notion-importer-card-border);
+}
+
+.protyle-wysiwyg .sb[style*="--notion-importer-block-color-"]::before {
+    content: "";
+    position: absolute;
+    top: 10px;
+    bottom: 10px;
+    left: 12px;
+    width: 3px;
+    border-radius: 999px;
+    background: var(--notion-importer-card-rule);
+}
+
+.protyle-wysiwyg .sb[style*="--notion-importer-block-color-"] [contenteditable="true"] {
+    color: inherit;
+}
+
+.protyle-wysiwyg .sb[style*="--notion-importer-block-color-"] > [data-type="NodeParagraph"]:first-child [contenteditable="true"] {
+    font-weight: 600;
+}
+
+.protyle-wysiwyg .sb[style*="--notion-importer-block-color-"] [data-type="block-ref"] {
+    color: inherit !important;
+    text-decoration: underline;
+    text-decoration-color: currentColor;
+    text-underline-offset: 2px;
+}
+
+.protyle-wysiwyg .sb[style*="--notion-importer-block-color-"] [data-type="block-ref"][data-notion-importer-doc-icon-kind] {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+}
+
+.protyle-wysiwyg .sb[style*="--notion-importer-block-color-"] [data-type="block-ref"][data-notion-importer-doc-icon-kind="emoji"]::before {
+    content: attr(data-notion-importer-doc-icon-text);
+    display: inline-block;
+    line-height: 1;
+}
+
+.protyle-wysiwyg .sb[style*="--notion-importer-block-color-"] [data-type="block-ref"][data-notion-importer-doc-icon-kind="image"]::before {
+    content: "";
+    width: 1em;
+    height: 1em;
+    display: inline-block;
+    border-radius: 3px;
+    background-image: var(--notion-importer-doc-icon-image);
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: contain;
+    flex: 0 0 auto;
+}
+
+.protyle-wysiwyg img[alt="notion-inline-page-icon"] {
+    width: 1em;
+    height: 1em;
+    display: inline-block;
+    vertical-align: -0.16em;
+    border-radius: 3px;
+    margin-right: 0.35em;
+}
+
+.protyle-wysiwyg .sb[style*="--notion-importer-block-color-"] .sb[data-sb-layout="fold"] {
+    position: relative;
+    padding-left: 18px;
+    min-height: 24px;
+}
+
+.protyle-wysiwyg .sb[style*="--notion-importer-block-color-"] .sb[data-sb-layout="fold"]::before {
+    content: "▸";
+    position: absolute;
+    left: 0;
+    top: 2px;
+    color: inherit;
+    opacity: 0.8;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.protyle-wysiwyg .sb[style*="--notion-importer-block-color-"] .sb[data-sb-layout="fold"] > [data-type="NodeParagraph"]:first-child [contenteditable="true"] {
+    color: transparent;
+    font-size: 0;
+    min-height: 20px;
+}
+
+.protyle-wysiwyg .sb[style*="--notion-importer-block-color-"] .sb[data-sb-layout="fold"] > :not([data-type="NodeParagraph"]:first-child) {
+    display: none;
+}
+
+.plugin-sample {
+    &__custom-tab {
+        background-color: var(--b3-theme-background);
+        height: 100%;
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    &__custom-dock {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    &__time {
+        background: var(--b3-card-info-background);
+        border-radius: 4px;
+        padding: 2px 8px;
+    }
+}
