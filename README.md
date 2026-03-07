@@ -3,9 +3,9 @@
 [![SiYuan](https://img.shields.io/badge/SiYuan-v3.0.12+-blue)](https://b3log.org/siyuan)
 [![Downloads](https://img.shields.io/github/downloads/FEUAZUR/notion-importer/total)](https://github.com/FEUAZUR/notion-importer/releases)
 
-# Notion Importer for SiYuan
+# Notion Importer for SiYuan V2
 
-A SiYuan plugin that imports Notion HTML exports with full support for databases, media, cover images, page icons, and document hierarchy.
+A SiYuan plugin that imports Notion HTML exports into SiYuan with deterministic hierarchy reconstruction, stable database import, and preserved styles/media.
 
 ## Features
 
@@ -67,10 +67,17 @@ A SiYuan plugin that imports Notion HTML exports with full support for databases
 
 ```bash
 npm install
+npm test
 npm run build
 ```
 
 The built plugin will be in the `dist/` directory and packaged as `package.zip`.
+
+## Architecture
+
+- `export-parser`: ZIP walk, `index.html` manifest parsing, registry building
+- `notion-normalizer`: canonical write plan for SiYuan
+- `siyuan-writer`: notebook/doc/asset/database writes and post-processing
 
 ## Development
 

@@ -7,6 +7,7 @@ package.zip
 node_modules
 dev
 dist
+tests-dist
 build
 tmp
 .pnpm-store

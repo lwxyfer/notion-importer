@@ -66,6 +66,8 @@ export default defineConfig({
         "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV)
     },
 
+    publicDir: false,
+
     build: {
         // 输出路径
         outDir: distDir,
