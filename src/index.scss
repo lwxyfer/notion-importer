@@ -1,7 +1,3 @@
-#helloPanel {
-    border: 1px rgb(189, 119, 119) dashed;
-}
-
 :root,
 html[data-theme-mode="light"] {
     --notion-importer-card-border: rgba(55, 53, 47, 0.12);
@@ -141,27 +137,4 @@ html[data-theme-mode="dark"] {
 
 .protyle-wysiwyg .sb[style*="--notion-importer-block-color-"] .sb[data-sb-layout="fold"] > :not([data-type="NodeParagraph"]:first-child) {
     display: none;
-}
-
-.plugin-sample {
-    &__custom-tab {
-        background-color: var(--b3-theme-background);
-        height: 100%;
-        width: 100%;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-    }
-
-    &__custom-dock {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-    }
-
-    &__time {
-        background: var(--b3-card-info-background);
-        border-radius: 4px;
-        padding: 2px 8px;
-    }
 }

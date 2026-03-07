@@ -18,6 +18,7 @@ import {
 } from './notion-types.js';
 import { mapNotionColumnTypeToSiYuan } from './database-utils.js';
 import {
+	detectDateOrderPreference,
 	escapeHashtags,
 	getNotionId,
 	hoistChildren,
@@ -2335,11 +2336,20 @@ function materializeSharedDatabaseState(info: NotionResolverInfo, sharedState: S
 		};
 
 		if (colType === 'date') {
+			const dateSamples = rowOrder.flatMap((row) => {
+				const rawValue = row.valuesByColumn[column.normalizedName];
+				return Array.isArray(rawValue)
+					? rawValue.filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
+					: [];
+			});
+			const dateOrder = detectDateOrderPreference(dateSamples);
 			keyValue.key = generateColumnKey(column.name, colType, []);
 			keyValue.key.id = column.keyID;
 			keyValue.values = rowOrder.map((row) => {
 				const rawValue = row.valuesByColumn[column.normalizedName];
-				const times = Array.isArray(rawValue) ? rawValue.map(toTimestamp).filter(Boolean) : [];
+				const times = Array.isArray(rawValue)
+					? rawValue.map((part) => toTimestamp(part, dateOrder)).filter(Boolean)
+					: [];
 				if (!times.length) {
 					return {
 						id: generateSiYuanID(),

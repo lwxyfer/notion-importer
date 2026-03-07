@@ -1,7 +1,7 @@
 import { assetBaseDir, calculateMD5, parseHTML, sanitizeFileName } from '../../util.js';
 import { ZipEntryFile } from '../../zip.js';
 import { NotionResolverInfo } from './notion-types.js';
-import { getNotionId, parseParentIds } from './notion-utils.js';
+import { getNotionId, parseNotionDateValue, parseParentIds } from './notion-utils.js';
 
 const PAGE_SECTION_HEADINGS = new Set(['pages', 'sous-pages', 'sub-pages', 'subpages', 'page']);
 
@@ -128,18 +128,7 @@ function stripTo200(title: string) {
 
 // Function to parse the date-time string
 function parseDateTime(dateTimeStr: string): Date | null {
-	// If the string starts with "@", skip the first character
-	const cleanedStr = dateTimeStr.startsWith('@') ? dateTimeStr.substr(1).trim() : dateTimeStr.trim();
-
-	// Use the built-in Date constructor
-	const dateObj = new Date(cleanedStr);
-
-	// Check if the resulting date object is valid
-	if (isNaN(dateObj.getTime())) {
-		return null;
-	}
-
-	return dateObj;
+	return parseNotionDateValue(dateTimeStr);
 }
 
 function extractTimeFromDOMElement(dom: HTMLElement, trClassName: string): Date | null {
