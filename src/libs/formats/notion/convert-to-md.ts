@@ -6,6 +6,7 @@ import {
 	type MarkdownInfo,
 	type NotionAttachmentInfo,
 	type NotionCSVFileInfo,
+	type NotionNumberDisplaySpec,
 	type NotionDatabaseViewFilter,
 	type NotionDatabaseViewGroupBy,
 	type NotionDatabaseViewSort,
@@ -26,11 +27,17 @@ import {
 	stripNotionId,
 	stripParentDirectories,
 	toTimestamp,
-	timestampIsPrueDate,
+	timestampIsPureDate,
 	parseEuropeanNumber,
 } from './notion-utils.js';
 
 let lute = (window as any).Lute.New();
+
+let _currentWarnings: string[] = [];
+function addImportWarning(msg: string) {
+	_currentWarnings.push(msg);
+	console.warn(msg);
+}
 
 function htmlToMarkdown(html: string): string {
     return lute.HTML2Md(html)
@@ -362,6 +369,7 @@ function preserveTextDirection(body: HTMLElement) {
 }
 
 export async function readToMarkdown(info: NotionResolverInfo, file: ZipEntryFile, pageNotionId?: string): Promise<MarkdownInfo> {
+	_currentWarnings = [];
 	const text = await file.readText();
 
 	const dom = parseHTML(text);
@@ -567,6 +575,7 @@ export async function readToMarkdown(info: NotionResolverInfo, file: ZipEntryFil
 		'inlineStyleMarkers': Object.fromEntries(inlineStyleMarkers),
 		'coverImage': coverImage || undefined,
 		'pageIcon': pageIcon || undefined,
+		'warnings': _currentWarnings.length > 0 ? [..._currentWarnings] : undefined,
 	}
 }
 
@@ -1582,7 +1591,7 @@ function convertLinksToSiYuan(info: NotionResolverInfo, notionLinks: NotionLink[
 					const displayText = iconText ? `${iconText} ${linkInfo.displayTitle || linkInfo.title}` : (linkInfo.displayTitle || linkInfo.title);
 					siyuanLink.textContent = `((${linkInfo.blockID} '${displayText}'))`;
 				} else {
-					console.warn('missing relation data for id: ' + link.id);
+					addImportWarning('missing relation data for id: ' + link.id);
 					const { basename } = parseFilePath(
 						decodeURI(link.a.getAttribute('href') ?? '')
 					);
@@ -1592,7 +1601,7 @@ function convertLinksToSiYuan(info: NotionResolverInfo, notionLinks: NotionLink[
 			case 'attachment':
 				let attachmentInfo = info.pathsToAttachmentInfo[link.path];
 				if (!attachmentInfo) {
-					console.warn('missing attachment data for: ' + link.path);
+					addImportWarning('missing attachment data for: ' + link.path);
 					continue;
 				}
 				siyuanLink.textContent = `[${attachmentInfo.nameWithExtension}](${attachmentInfo.pathInSiYuanMd})`;
@@ -1601,7 +1610,7 @@ function convertLinksToSiYuan(info: NotionResolverInfo, notionLinks: NotionLink[
 				siyuanLink = createEl('img')
 				let imageInfo = info.pathsToAttachmentInfo[link.path];
 				if (!imageInfo) {
-					console.warn('missing image file for: ' + link.path);
+					addImportWarning('missing image file for: ' + link.path);
 					continue;
 				}
 				siyuanLink.setAttribute('src', imageInfo.pathInSiYuanMd);
@@ -1762,6 +1771,7 @@ type ParsedDatabaseRow = {
 	rowid: string;
 	hasRelBlock: boolean;
 	values: DatabaseCellValue[];
+	displayValues: string[];
 	signature: string;
 	titleKey: string;
 };
@@ -1773,6 +1783,7 @@ type DatabaseTableInfo = {
 	tableNode: HTMLElement;
 	containerNode: HTMLElement;
 	collectionId?: string;
+	pagePath?: string;
 };
 
 type BuiltDatabaseTable = {
@@ -1782,6 +1793,10 @@ type BuiltDatabaseTable = {
 	cols: DatabaseColumn[];
 	rows: ParsedDatabaseRow[];
 	databaseIdentity: string | null;
+	csvCollectionPath: string;
+	pageCollectionPath: string;
+	rowCollectionPaths: string[];
+	notionRowIDs: string[];
 };
 
 type SharedDatabaseColumn = {
@@ -1791,6 +1806,7 @@ type SharedDatabaseColumn = {
 	keyID: string;
 	selectValues: Set<string>;
 	selectColors: Record<string, string>;
+	numberDisplay: NotionNumberDisplaySpec;
 };
 
 type SharedDatabaseRow = {
@@ -1799,6 +1815,7 @@ type SharedDatabaseRow = {
 	rowid: string;
 	hasRelBlock: boolean;
 	valuesByColumn: Record<string, DatabaseCellValue>;
+	displayValuesByColumn: Record<string, string>;
 };
 
 type SharedDatabaseView = {
@@ -1866,7 +1883,7 @@ function convertLinksToSiYuanV2(info: NotionResolverInfo, notionLinks: NotionLin
 					continue;
 				}
 
-				console.warn('missing relation data for id: ' + link.id);
+				addImportWarning('missing relation data for id: ' + link.id);
 				const { basename } = parseFilePath(
 					decodeURI(link.a.getAttribute('href') ?? '')
 				);
@@ -1876,7 +1893,7 @@ function convertLinksToSiYuanV2(info: NotionResolverInfo, notionLinks: NotionLin
 			case 'attachment': {
 				const attachmentInfo = info.pathsToAttachmentInfo[link.path];
 				if (!attachmentInfo) {
-					console.warn('missing attachment data for: ' + link.path);
+					addImportWarning('missing attachment data for: ' + link.path);
 					continue;
 				}
 				siyuanLink.textContent = `[${attachmentInfo.nameWithExtension}](${attachmentInfo.pathInSiYuanMd})`;
@@ -1886,7 +1903,7 @@ function convertLinksToSiYuanV2(info: NotionResolverInfo, notionLinks: NotionLin
 				siyuanLink = createEl('img');
 				const imageInfo = info.pathsToAttachmentInfo[link.path];
 				if (!imageInfo) {
-					console.warn('missing image file for: ' + link.path);
+					addImportWarning('missing image file for: ' + link.path);
 					continue;
 				}
 				siyuanLink.setAttribute('src', imageInfo.pathInSiYuanMd);
@@ -1935,6 +1952,130 @@ function databaseCellValueToText(value: DatabaseCellValue) {
 	return value || '';
 }
 
+function detectNumberFormatFromText(value: string) {
+	const trimmed = value.trim();
+	if (!trimmed) return '';
+	if (trimmed.includes('%')) return 'percent';
+	if (/[€]|\bEUR\b/i.test(trimmed)) return 'EUR';
+	if (/[£]|\bGBP\b/i.test(trimmed)) return 'GBP';
+	if (/[$]|\bUSD\b/i.test(trimmed)) return 'USD';
+	if (/[₽]|\bRUB\b/i.test(trimmed)) return 'RUB';
+	if (/[₩]|\bKRW\b/i.test(trimmed)) return 'KRW';
+	if (/[₹]|\bINR\b/i.test(trimmed)) return 'INR';
+	if (/[₺]|\bTRY\b/i.test(trimmed)) return 'TRY';
+	if (/[¥]|￥|\bJPY\b/i.test(trimmed)) return 'JPY';
+	if (/\bCNY\b/i.test(trimmed)) return 'CNY';
+	if (/\bCAD\b/i.test(trimmed)) return 'CAD';
+	if (/\bCHF\b/i.test(trimmed)) return 'CHF';
+	if (/\bTHB\b/i.test(trimmed)) return 'THB';
+	if (/\bAUD\b/i.test(trimmed)) return 'AUD';
+	if (/\bHKD\b/i.test(trimmed)) return 'HKD';
+	if (/\bTWD\b/i.test(trimmed)) return 'TWD';
+	if (/\bMOP\b/i.test(trimmed)) return 'MOP';
+	if (/\bSGD\b/i.test(trimmed)) return 'SGD';
+	if (/\bNZD\b/i.test(trimmed)) return 'NZD';
+	if (/\bILS\b/i.test(trimmed)) return 'ILS';
+	if (/[\d\u00A0\u202F\s][,.][\d]{3}\b/.test(trimmed) || /\b\d{1,3}(?:[ .,\u00A0\u202F]\d{3})+\b/.test(trimmed)) {
+		return 'commas';
+	}
+	return '';
+}
+
+function formatRoundedNumberValue(value: number, spec: NotionNumberDisplaySpec, fallbackFormatted = '') {
+	if (!Number.isFinite(value)) return fallbackFormatted;
+
+	if (spec.numberFormat === 'percent') {
+		return `${Math.ceil(value * 100)}%`;
+	}
+
+	const roundedValue = Math.ceil(value);
+	const formattedInteger = new Intl.NumberFormat('fr-FR', {
+		maximumFractionDigits: 0,
+		minimumFractionDigits: 0,
+	}).format(roundedValue);
+
+	switch (spec.numberFormat) {
+		case 'EUR':
+			return `${formattedInteger}€`;
+		case 'USD':
+			return `$${formattedInteger}`;
+		case 'GBP':
+			return `£${formattedInteger}`;
+		case 'JPY':
+		case 'CNY':
+			return `¥${formattedInteger}`;
+		case 'RUB':
+			return `${formattedInteger}₽`;
+		case 'KRW':
+			return `${formattedInteger}₩`;
+		case 'INR':
+			return `₹${formattedInteger}`;
+		case 'TRY':
+			return `${formattedInteger}₺`;
+		case 'CAD':
+		case 'CHF':
+		case 'THB':
+		case 'AUD':
+		case 'HKD':
+		case 'TWD':
+		case 'MOP':
+		case 'SGD':
+		case 'NZD':
+		case 'ILS':
+		case 'commas':
+			return formattedInteger;
+		default:
+			return formattedInteger || fallbackFormatted;
+	}
+}
+
+function inferNumberDisplaySpecs(cols: DatabaseColumn[], rows: ParsedDatabaseRow[]) {
+	const specs: Record<string, NotionNumberDisplaySpec> = {};
+
+	cols.forEach((column, columnIndex) => {
+		if (mapNotionColumnTypeToSiYuan(column.type) !== 'number') return;
+
+		let numberFormat = '';
+		let sampleDisplay = '';
+		let roundedEvidence = 0;
+		let contradictoryEvidence = 0;
+
+		for (const row of rows) {
+			const rawText = databaseCellValueToText(row.values[columnIndex] ?? '');
+			const displayText = (row.displayValues[columnIndex] || '').trim();
+
+			if (!numberFormat) {
+				numberFormat = detectNumberFormatFromText(displayText) || detectNumberFormatFromText(rawText);
+			}
+			if (!sampleDisplay && displayText) {
+				sampleDisplay = displayText;
+			}
+
+			const rawNumber = parseEuropeanNumber(rawText);
+			const visibleNumber = displayText ? parseEuropeanNumber(displayText) : null;
+			if (!rawNumber || !visibleNumber) continue;
+
+			if (!Number.isInteger(rawNumber.value) && Number.isInteger(visibleNumber.value)) {
+				if (visibleNumber.value === Math.ceil(rawNumber.value)) {
+					roundedEvidence += 1;
+				} else {
+					contradictoryEvidence += 1;
+				}
+			}
+		}
+
+		if (!numberFormat && !sampleDisplay && roundedEvidence === 0) return;
+
+		specs[normalizeNotionLookup(column.name)] = {
+			roundedUpToUnit: roundedEvidence > 0 && contradictoryEvidence === 0,
+			numberFormat,
+			sampleDisplay,
+		};
+	});
+
+	return specs;
+}
+
 function finalizeParsedDatabaseRow(row: ParsedDatabaseRow, priKeyIndex: number, signatureColIndices: number[]) {
 	row.titleKey = normalizeDatabaseCellValue(row.values[priKeyIndex] ?? '');
 	row.signature = signatureColIndices
@@ -1972,6 +2113,12 @@ function extractRowNotionIDFromCSVTitle(value: string) {
 	return localPathMatch?.[2];
 }
 
+function stripNotionCSVLinkSuffix(value: string) {
+	const trimmed = value.trim();
+	const match = trimmed.match(/^(.+?)\s*\((?:https?:\/\/|[^)]*\.html).*?\)$/i);
+	return match ? match[1].trim() : trimmed;
+}
+
 function isLikelyCheckboxValue(value: string) {
 	return /^(yes|no|true|false|0|1)$/i.test(value.trim());
 }
@@ -1990,7 +2137,11 @@ function isLikelyPhoneValue(value: string) {
 }
 
 function isLikelyDateValue(value: string) {
-	if (!value.trim()) return false;
+	const trimmed = value.trim();
+	if (!trimmed) return false;
+	if (!/[a-z]/i.test(trimmed) && !/[/-]/.test(trimmed) && !/\b\d{4}\b/.test(trimmed)) {
+		return false;
+	}
 	return splitNotionDateRange(value).every((part) => part && toTimestamp(part) !== 0);
 }
 
@@ -2076,7 +2227,103 @@ function shouldUpgradeColumnTypeFromCSV(currentType: string, inferredType: strin
 	if (!inferredType || inferredType === 'typesText' || currentType === inferredType) {
 		return false;
 	}
-	return currentType === 'typesText';
+	if (currentType === 'typesText') {
+		return true;
+	}
+	if (
+		['typesDate', 'typesCreatedTime', 'typesLastEditedTime'].includes(currentType) &&
+		inferredType === 'typesNumber'
+	) {
+		return true;
+	}
+	if (currentType === 'typesSelect' && inferredType === 'typesMultipleSelect') {
+		return true;
+	}
+	if (
+		['typesDate', 'typesCreatedTime', 'typesLastEditedTime'].includes(currentType) &&
+		['typesCreatedTime', 'typesLastEditedTime'].includes(inferredType)
+	) {
+		return true;
+	}
+	return false;
+}
+
+function resolveNormalizedDatabaseHref(
+	info: NotionResolverInfo,
+	tableInfo: DatabaseTableInfo,
+	href: string,
+) {
+	const rawHref = href.split('#')[0].split('?')[0].trim();
+	if (!rawHref) return '';
+
+	const decodedHref = decodeNotionValue(rawHref).replace(/\\/g, '/');
+	const rowNotionID = getNotionId(decodedHref);
+	const rowFilePath = rowNotionID
+		? normalizeNotionLookup(info.idsToFileInfo[rowNotionID]?.path ?? '')
+		: '';
+	const pageDir = tableInfo.pagePath
+		? normalizeNotionLookup(parseFilePath(tableInfo.pagePath).parent)
+		: '';
+
+	const resolvedFromPage = (() => {
+		if (!pageDir) return '';
+		const segments = pageDir.split('/').filter(Boolean);
+		for (const segment of decodedHref.split('/')) {
+			if (!segment || segment === '.') continue;
+			if (segment === '..') {
+				if (segments.length) segments.pop();
+				continue;
+			}
+			segments.push(segment);
+		}
+		return normalizeNotionLookup(segments.join('/'));
+	})();
+
+	const candidates = [
+		normalizeNotionLookup(stripParentDirectories(decodedHref)),
+		resolvedFromPage,
+	].filter(Boolean);
+	let bestCandidate = candidates[0] ?? '';
+	let bestScore = -1;
+	for (const candidate of candidates) {
+		const parent = normalizeNotionLookup(parseFilePath(candidate).parent);
+		let score = 0;
+		if (parent && info.csvFilesByCollectionPath[parent]?.length) {
+			score += 10;
+		}
+		if (rowFilePath) {
+			if (rowFilePath === candidate) {
+				score += 20;
+			} else if (rowFilePath.endsWith(candidate)) {
+				score += 10;
+			} else if (parent && rowFilePath.startsWith(`${parent}/`)) {
+				score += 8;
+			}
+		}
+		if (score > bestScore) {
+			bestScore = score;
+			bestCandidate = candidate;
+		}
+	}
+	return bestCandidate;
+}
+
+function collectNormalizedRowCollectionPaths(info: NotionResolverInfo, tableInfo: DatabaseTableInfo) {
+	const collectionPathCounts = new Map<string, number>();
+	const rowNodes = Array.from(tableInfo.tableNode.querySelectorAll('tbody > tr')) as HTMLElement[];
+	for (const rowNode of rowNodes) {
+		const anchor =
+			(rowNode.querySelector('td.cell-title a[href]') as HTMLAnchorElement | null) ||
+			(rowNode.querySelector('td:first-child a[href]') as HTMLAnchorElement | null);
+		if (!anchor) continue;
+		const normalizedHref = resolveNormalizedDatabaseHref(info, tableInfo, anchor.getAttribute('href') ?? '');
+		if (!normalizedHref) continue;
+		const rowParent = parseFilePath(normalizedHref).parent;
+		if (!rowParent) continue;
+		const normalizedPath = normalizeNotionLookup(rowParent);
+		collectionPathCounts.set(normalizedPath, (collectionPathCounts.get(normalizedPath) ?? 0) + 1);
+	}
+	return collectionPathCounts;
 }
 
 function resolveCSVInfoForTable(info: NotionResolverInfo, tableInfo: DatabaseTableInfo, pageNotionId?: string) {
@@ -2115,17 +2362,7 @@ function resolveCSVInfoForTable(info: NotionResolverInfo, tableInfo: DatabaseTab
 		addCandidate(info.csvFileInfos[tableInfo.collectionId]);
 	}
 
-	const rowAnchors = Array.from(tableInfo.tableNode.querySelectorAll('tbody > tr a[href]')) as HTMLAnchorElement[];
-	const collectionPathCounts = new Map<string, number>();
-	for (const anchor of rowAnchors) {
-		const href = stripParentDirectories(anchor.getAttribute('href') ?? '');
-		if (!href) continue;
-		const decodedHref = decodeNotionValue(href);
-		const rowParent = parseFilePath(decodedHref).parent;
-		if (!rowParent) continue;
-		const normalizedPath = normalizeNotionLookup(rowParent);
-		collectionPathCounts.set(normalizedPath, (collectionPathCounts.get(normalizedPath) ?? 0) + 1);
-	}
+	const collectionPathCounts = collectNormalizedRowCollectionPaths(info, tableInfo);
 	const dominantPath = Array.from(collectionPathCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0];
 	if (dominantPath) {
 		const matches = info.csvFilesByCollectionPath[dominantPath];
@@ -2144,20 +2381,304 @@ function resolveDatabaseIdentity(
 	tableInfo: DatabaseTableInfo,
 	csvInfo?: NotionCSVFileInfo | null,
 ) {
-	if (tableInfo.collectionId && (info.csvFileInfos[tableInfo.collectionId] || !csvInfo)) {
-		return `collection:${tableInfo.collectionId}`;
+	const dominantPath = Array.from(collectNormalizedRowCollectionPaths(info, tableInfo).entries()).sort((a, b) => b[1] - a[1])[0]?.[0];
+	if (dominantPath) {
+		return `path:${dominantPath}`;
+	}
+	if (csvInfo?.normalizedCollectionPath) {
+		return `path:${csvInfo.normalizedCollectionPath}`;
 	}
 	if (csvInfo?.id) {
 		return `csv:${csvInfo.id}`;
 	}
-	if (csvInfo?.normalizedCollectionPath) {
-		return `path:${csvInfo.normalizedCollectionPath}`;
+	if (tableInfo.collectionId) {
+		return `collection:${tableInfo.collectionId}`;
 	}
 	const normalizedTitle = normalizeNotionLookup(tableInfo.title);
 	if (normalizedTitle && info.csvFilesByTitle[normalizedTitle]?.length === 1) {
 		return `title:${normalizedTitle}`;
 	}
 	return null;
+}
+
+function getRowCollectionPathsForRows(info: NotionResolverInfo, rows: ParsedDatabaseRow[]) {
+	const counts = new Map<string, number>();
+	for (const row of rows) {
+		if (!row.notionRowID) continue;
+		const rowPath = info.idsToFileInfo[row.notionRowID]?.path;
+		if (!rowPath) continue;
+		const rowParent = normalizeNotionLookup(parseFilePath(rowPath).parent);
+		if (!rowParent) continue;
+		counts.set(rowParent, (counts.get(rowParent) ?? 0) + 1);
+	}
+	return Array.from(counts.entries())
+		.sort((a, b) => b[1] - a[1])
+		.map(([path]) => path);
+}
+
+function chooseCanonicalDatabaseIdentity(tables: BuiltDatabaseTable[]) {
+	const rankedPaths = new Map<string, number>();
+	for (const table of tables) {
+		for (const [index, path] of table.rowCollectionPaths.entries()) {
+			rankedPaths.set(path, (rankedPaths.get(path) ?? 0) + (100 - index));
+		}
+		if (table.pageCollectionPath) {
+			rankedPaths.set(table.pageCollectionPath, (rankedPaths.get(table.pageCollectionPath) ?? 0) + 60);
+		}
+		if (table.csvCollectionPath) {
+			rankedPaths.set(table.csvCollectionPath, (rankedPaths.get(table.csvCollectionPath) ?? 0) + 25);
+		}
+	}
+	const dominantPath = Array.from(rankedPaths.entries()).sort((a, b) => b[1] - a[1])[0]?.[0];
+	if (dominantPath) {
+		return `path:${dominantPath}`;
+	}
+
+	const explicitIdentity = tables.map((table) => table.databaseIdentity).find(Boolean);
+	return explicitIdentity ?? null;
+}
+
+function shouldMergeBuiltTables(a: BuiltDatabaseTable, b: BuiltDatabaseTable) {
+	if (normalizeNotionLookup(a.title) !== normalizeNotionLookup(b.title)) {
+		return false;
+	}
+
+	if (a.csvCollectionPath && b.csvCollectionPath && a.csvCollectionPath === b.csvCollectionPath) {
+		return true;
+	}
+	if (a.pageCollectionPath && b.pageCollectionPath && a.pageCollectionPath === b.pageCollectionPath) {
+		return true;
+	}
+
+	const sharedRowPath = a.rowCollectionPaths.some((path) => b.rowCollectionPaths.includes(path));
+	if (sharedRowPath) {
+		return true;
+	}
+
+	if (a.pageCollectionPath && b.rowCollectionPaths.includes(a.pageCollectionPath)) {
+		return true;
+	}
+	if (b.pageCollectionPath && a.rowCollectionPaths.includes(b.pageCollectionPath)) {
+		return true;
+	}
+	if (a.pageCollectionPath && b.csvCollectionPath && a.pageCollectionPath === b.csvCollectionPath) {
+		return true;
+	}
+	if (b.pageCollectionPath && a.csvCollectionPath && b.pageCollectionPath === a.csvCollectionPath) {
+		return true;
+	}
+
+	if (a.csvCollectionPath && b.rowCollectionPaths.includes(a.csvCollectionPath)) {
+		return true;
+	}
+	if (b.csvCollectionPath && a.rowCollectionPaths.includes(b.csvCollectionPath)) {
+		return true;
+	}
+
+	if (a.notionRowIDs.length > 0 && b.notionRowIDs.length > 0) {
+		const bRowIDs = new Set(b.notionRowIDs);
+		for (const notionRowID of a.notionRowIDs) {
+			if (bRowIDs.has(notionRowID)) {
+				return true;
+			}
+		}
+	}
+
+	const aTitleKeys = Array.from(new Set(a.rows.map((row) => row.titleKey).filter(Boolean)));
+	const bTitleKeys = new Set(b.rows.map((row) => row.titleKey).filter(Boolean));
+	if (aTitleKeys.length > 0 && bTitleKeys.size > 0) {
+		let sharedTitleKeys = 0;
+		for (const titleKey of aTitleKeys) {
+			if (bTitleKeys.has(titleKey)) {
+				sharedTitleKeys += 1;
+			}
+		}
+		const smallestSetSize = Math.min(aTitleKeys.length, bTitleKeys.size);
+		if (
+			sharedTitleKeys >= Math.min(3, smallestSetSize) &&
+			sharedTitleKeys / Math.max(1, smallestSetSize) >= 0.4
+		) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+function hasStrongColumnOverlap(a: BuiltDatabaseTable, b: BuiltDatabaseTable) {
+	const aColumns = Array.from(new Set(a.cols.map((col) => normalizeNotionLookup(col.name)).filter(Boolean)));
+	const bColumns = new Set(b.cols.map((col) => normalizeNotionLookup(col.name)).filter(Boolean));
+	if (aColumns.length === 0 || bColumns.size === 0) {
+		return false;
+	}
+
+	let sharedColumns = 0;
+	for (const column of aColumns) {
+		if (bColumns.has(column)) {
+			sharedColumns += 1;
+		}
+	}
+
+	const smallestSetSize = Math.min(aColumns.length, bColumns.size);
+	return (
+		sharedColumns >= Math.min(2, smallestSetSize) &&
+		sharedColumns / Math.max(1, smallestSetSize) >= 0.6
+	);
+}
+
+function hasStrongSharedStateColumnOverlap(sharedState: SharedDatabaseState, table: BuiltDatabaseTable) {
+	const sharedColumns = new Set(sharedState.columns.map((column) => column.normalizedName).filter(Boolean));
+	const tableColumns = Array.from(new Set(table.cols.map((col) => normalizeNotionLookup(col.name)).filter(Boolean)));
+	if (sharedColumns.size === 0 || tableColumns.length === 0) {
+		return false;
+	}
+
+	let overlap = 0;
+	for (const column of tableColumns) {
+		if (sharedColumns.has(column)) {
+			overlap += 1;
+		}
+	}
+
+	const smallestSetSize = Math.min(sharedColumns.size, tableColumns.length);
+	return (
+		overlap >= Math.min(2, smallestSetSize) &&
+		overlap / Math.max(1, smallestSetSize) >= 0.6
+	);
+}
+
+function normalizeBuiltDatabaseIdentities(tables: BuiltDatabaseTable[]) {
+	const titleGroups = new Map<string, BuiltDatabaseTable[]>();
+	for (const table of tables) {
+		const titleKey = normalizeNotionLookup(table.title);
+		const group = titleGroups.get(titleKey) ?? [];
+		group.push(table);
+		titleGroups.set(titleKey, group);
+	}
+
+	for (const group of titleGroups.values()) {
+		if (group.length < 2) continue;
+		const visited = new Set<BuiltDatabaseTable>();
+		for (const table of group) {
+			if (visited.has(table)) continue;
+			const component: BuiltDatabaseTable[] = [];
+			const queue = [table];
+			visited.add(table);
+
+			while (queue.length > 0) {
+				const current = queue.shift()!;
+				component.push(current);
+				for (const candidate of group) {
+					if (visited.has(candidate)) continue;
+					if (!shouldMergeBuiltTables(current, candidate)) continue;
+					visited.add(candidate);
+					queue.push(candidate);
+				}
+			}
+
+			if (component.length < 2) continue;
+			const canonicalIdentity = chooseCanonicalDatabaseIdentity(component);
+			if (!canonicalIdentity) continue;
+			component.forEach((entry) => {
+				entry.databaseIdentity = canonicalIdentity;
+			});
+		}
+	}
+}
+
+function resolveDatabaseIdentityAlias(info: NotionResolverInfo, identity: string | null) {
+	if (!identity) return identity;
+	let resolved = identity;
+	const seen = new Set<string>();
+	while (info.databaseIdentityAliases[resolved] && !seen.has(resolved)) {
+		seen.add(resolved);
+		resolved = info.databaseIdentityAliases[resolved];
+	}
+	return resolved;
+}
+
+function getDatabaseCorrelationKeys(table: BuiltDatabaseTable) {
+	const keys = new Set<string>();
+	for (const rowPath of table.rowCollectionPaths) {
+		if (rowPath) {
+			keys.add(`row:${rowPath}`);
+		}
+	}
+	if (table.csvCollectionPath) {
+		keys.add(`csv:${table.csvCollectionPath}`);
+	}
+	if (table.pageCollectionPath) {
+		keys.add(`page:${table.pageCollectionPath}`);
+	}
+	return Array.from(keys);
+}
+
+function registerSharedDatabaseCorrelationKeys(
+	info: NotionResolverInfo,
+	sharedState: SharedDatabaseState,
+	table: BuiltDatabaseTable,
+) {
+	for (const key of getDatabaseCorrelationKeys(table)) {
+		info.attributeViewsByCorrelationKey[key] = sharedState;
+	}
+}
+
+function harmonizeBuiltDatabaseIdentity(info: NotionResolverInfo, table: BuiltDatabaseTable) {
+	const titleKey = normalizeNotionLookup(table.title);
+	if (!titleKey) {
+		table.databaseIdentity = resolveDatabaseIdentityAlias(info, table.databaseIdentity);
+		return;
+	}
+
+	const groups = info.databaseCorrelationGroupsByTitle[titleKey] ?? [];
+	let matchedGroups = groups.filter((group) =>
+		(group.tables as BuiltDatabaseTable[]).some((existingTable) => shouldMergeBuiltTables(existingTable, table)),
+	);
+	if (matchedGroups.length === 0 && groups.length === 1) {
+		matchedGroups = [groups[0]];
+	}
+
+	if (matchedGroups.length === 0) {
+		const canonicalIdentity =
+			resolveDatabaseIdentityAlias(info, table.databaseIdentity) || chooseCanonicalDatabaseIdentity([table]);
+		if (table.databaseIdentity && canonicalIdentity && table.databaseIdentity !== canonicalIdentity) {
+			info.databaseIdentityAliases[table.databaseIdentity] = canonicalIdentity;
+		}
+		table.databaseIdentity = canonicalIdentity;
+		groups.push({
+			canonicalIdentity,
+			tables: [table],
+		});
+		info.databaseCorrelationGroupsByTitle[titleKey] = groups;
+		return;
+	}
+
+	const mergedTables = new Set<BuiltDatabaseTable>([table]);
+	for (const group of matchedGroups) {
+		for (const existingTable of group.tables as BuiltDatabaseTable[]) {
+			mergedTables.add(existingTable);
+		}
+	}
+	const mergedTableList = Array.from(mergedTables);
+	const canonicalIdentity =
+		resolveDatabaseIdentityAlias(
+			info,
+			chooseCanonicalDatabaseIdentity(mergedTableList) || matchedGroups[0].canonicalIdentity || table.databaseIdentity,
+		) || null;
+
+	for (const mergedTable of mergedTableList) {
+		if (mergedTable.databaseIdentity && canonicalIdentity && mergedTable.databaseIdentity !== canonicalIdentity) {
+			info.databaseIdentityAliases[mergedTable.databaseIdentity] = canonicalIdentity;
+		}
+		mergedTable.databaseIdentity = canonicalIdentity;
+	}
+
+	const unmatchedGroups = groups.filter((group) => !matchedGroups.includes(group));
+	unmatchedGroups.push({
+		canonicalIdentity,
+		tables: mergedTableList,
+	});
+	info.databaseCorrelationGroupsByTitle[titleKey] = unmatchedGroups;
 }
 
 function getDatabaseRowKey(row: ParsedDatabaseRow) {
@@ -2209,17 +2730,49 @@ export function extractDatabaseViewSpec(
 		groupBy: parseDatabaseGroupBy(containerNode),
 		visibleColumnNames,
 		rowOrder,
+		numericDisplayByColumn: {},
 	};
 }
 
 function getOrCreateSharedDatabaseState(info: NotionResolverInfo, table: BuiltDatabaseTable) {
-	const cacheKey = table.databaseIdentity || `ephemeral:${generateSiYuanID()}`;
+	const resolvedIdentity = resolveDatabaseIdentityAlias(info, table.databaseIdentity);
+	if (resolvedIdentity) {
+		table.databaseIdentity = resolvedIdentity;
+	}
+	const cacheKey = resolvedIdentity || `ephemeral:${generateSiYuanID()}`;
 	let sharedState = info.attributeViewsByDatabaseIdentity[cacheKey] as SharedDatabaseState | undefined;
 	if (sharedState) {
-		if (!table.databaseIdentity) {
+		registerSharedDatabaseCorrelationKeys(info, sharedState, table);
+		if (!resolvedIdentity) {
 			delete info.attributeViewsByDatabaseIdentity[cacheKey];
 		}
 		return sharedState;
+	}
+
+	for (const key of getDatabaseCorrelationKeys(table)) {
+		sharedState = info.attributeViewsByCorrelationKey[key] as SharedDatabaseState | undefined;
+		if (!sharedState) {
+			continue;
+		}
+		if (resolvedIdentity) {
+			info.attributeViewsByDatabaseIdentity[resolvedIdentity] = sharedState;
+		}
+		registerSharedDatabaseCorrelationKeys(info, sharedState, table);
+		return sharedState;
+	}
+
+	const normalizedTitle = normalizeNotionLookup(table.title);
+	if (normalizedTitle) {
+		const titleCandidates = (info.attributeViewsByNormalizedTitle[normalizedTitle] ?? []) as SharedDatabaseState[];
+		const matchingCandidates = titleCandidates.filter((candidate) => hasStrongSharedStateColumnOverlap(candidate, table));
+		if (matchingCandidates.length === 1) {
+			sharedState = matchingCandidates[0];
+			if (resolvedIdentity) {
+				info.attributeViewsByDatabaseIdentity[resolvedIdentity] = sharedState;
+			}
+			registerSharedDatabaseCorrelationKeys(info, sharedState, table);
+			return sharedState;
+		}
 	}
 
 	sharedState = {
@@ -2233,10 +2786,17 @@ function getOrCreateSharedDatabaseState(info: NotionResolverInfo, table: BuiltDa
 		avData: {},
 	};
 
-	if (table.databaseIdentity) {
+	if (resolvedIdentity) {
 		info.attributeViewsByDatabaseIdentity[cacheKey] = sharedState;
 	}
-
+	if (normalizedTitle) {
+		const titleStates = (info.attributeViewsByNormalizedTitle[normalizedTitle] ?? []) as SharedDatabaseState[];
+		if (!titleStates.includes(sharedState)) {
+			titleStates.push(sharedState);
+			info.attributeViewsByNormalizedTitle[normalizedTitle] = titleStates;
+		}
+	}
+	registerSharedDatabaseCorrelationKeys(info, sharedState, table);
 	return sharedState;
 }
 
@@ -2258,6 +2818,10 @@ function mergeBuiltTableIntoSharedState(info: NotionResolverInfo, sharedState: S
 				keyID: generateSiYuanID(),
 				selectValues: new Set<string>(),
 				selectColors: {},
+				numberDisplay: {
+					roundedUpToUnit: false,
+					numberFormat: '',
+				},
 			};
 			sharedState.columns.push(sharedColumn);
 			existingColumns.set(normalizedName, sharedColumn);
@@ -2267,6 +2831,18 @@ function mergeBuiltTableIntoSharedState(info: NotionResolverInfo, sharedState: S
 
 		Array.from(column.selectValues).forEach((value) => sharedColumn!.selectValues.add(value));
 		Object.assign(sharedColumn.selectColors, column.selectColors);
+		const numberDisplaySpec = table.viewSpec.numericDisplayByColumn[normalizedName];
+		if (numberDisplaySpec) {
+			if (numberDisplaySpec.roundedUpToUnit) {
+				sharedColumn.numberDisplay.roundedUpToUnit = true;
+			}
+			if (!sharedColumn.numberDisplay.numberFormat && numberDisplaySpec.numberFormat) {
+				sharedColumn.numberDisplay.numberFormat = numberDisplaySpec.numberFormat;
+			}
+			if (!sharedColumn.numberDisplay.sampleDisplay && numberDisplaySpec.sampleDisplay) {
+				sharedColumn.numberDisplay.sampleDisplay = numberDisplaySpec.sampleDisplay;
+			}
+		}
 
 		table.rows.forEach((row) => {
 			const rowKey = getDatabaseRowKey(row);
@@ -2279,6 +2855,7 @@ function mergeBuiltTableIntoSharedState(info: NotionResolverInfo, sharedState: S
 					rowid: linkedBlockID || row.rowid || generateSiYuanID(),
 					hasRelBlock: row.hasRelBlock || Boolean(linkedBlockID),
 					valuesByColumn: {},
+					displayValuesByColumn: {},
 				};
 				sharedState.rowsByKey.set(rowKey, sharedRow);
 				sharedState.rowKeysInOrder.push(rowKey);
@@ -2291,6 +2868,10 @@ function mergeBuiltTableIntoSharedState(info: NotionResolverInfo, sharedState: S
 			}
 
 			sharedRow.valuesByColumn[normalizedName] = row.values[columnIndex] ?? '';
+			const displayValue = row.displayValues[columnIndex]?.trim();
+			if (displayValue) {
+				sharedRow.displayValuesByColumn[normalizedName] = displayValue;
+			}
 		});
 	});
 
@@ -2327,6 +2908,7 @@ function materializeSharedDatabaseState(info: NotionResolverInfo, sharedState: S
 	const rowOrder = sharedState.rowKeysInOrder
 		.map((rowKey) => sharedState.rowsByKey.get(rowKey))
 		.filter((row): row is SharedDatabaseRow => Boolean(row));
+	const rowOrderByKey = new Map(rowOrder.map((row) => [row.key, row]));
 
 	const keyValues = sharedState.columns.map((column) => {
 		const colType = mapNotionColumnTypeToSiYuan(column.type);
@@ -2372,7 +2954,7 @@ function materializeSharedDatabaseState(info: NotionResolverInfo, sharedState: S
 						content: times[0],
 						isNotEmpty: true,
 						hasEndDate: false,
-						isNotTime: timestampIsPrueDate(times[0]),
+						isNotTime: timestampIsPureDate(times[0]),
 						content2: 0,
 						isNotEmpty2: false,
 						formattedContent: '',
@@ -2479,6 +3061,7 @@ function materializeSharedDatabaseState(info: NotionResolverInfo, sharedState: S
 		} else if (colType === 'number') {
 			keyValue.key = generateColumnKey(column.name, colType, []);
 			keyValue.key.id = column.keyID;
+			keyValue.key.numberFormat = column.numberDisplay.numberFormat || '';
 			keyValue.values = rowOrder.map((row) => {
 				const parsed = parseEuropeanNumber(databaseCellValueToText(row.valuesByColumn[column.normalizedName]));
 				if (!parsed) {
@@ -2506,7 +3089,11 @@ function materializeSharedDatabaseState(info: NotionResolverInfo, sharedState: S
 					number: {
 						content: parsed.value,
 						isNotEmpty: true,
-						formattedContent: parsed.formatted,
+						formattedContent:
+							row.displayValuesByColumn[column.normalizedName] ||
+							(column.numberDisplay.roundedUpToUnit
+								? formatRoundedNumberValue(parsed.value, column.numberDisplay, parsed.formatted)
+								: parsed.formatted),
 					},
 				};
 			});
@@ -2582,6 +3169,21 @@ function materializeSharedDatabaseState(info: NotionResolverInfo, sharedState: S
 						};
 						if (mapNotionColumnTypeToSiYuan(column.type) === 'number') {
 							col.calc = { operator: 'Sum' };
+							if (column.numberDisplay.roundedUpToUnit) {
+								const sum = view.rowKeys.reduce((total, rowKey) => {
+									const row = rowOrderByKey.get(rowKey);
+									if (!row) return total;
+									const parsed = parseEuropeanNumber(databaseCellValueToText(row.valuesByColumn[column.normalizedName]));
+									return total + (parsed?.value ?? 0);
+								}, 0);
+								col.calc.result = {
+									number: {
+										content: Math.ceil(sum),
+										isNotEmpty: true,
+										formattedContent: formatRoundedNumberValue(sum, column.numberDisplay),
+									},
+								};
+							}
 						}
 						return col;
 					}),
@@ -2635,11 +3237,13 @@ function parseHTMLDatabaseRows(
 				rowid: linkedBlockID || generateSiYuanID(),
 				hasRelBlock: Boolean(linkedBlockID),
 				values: [],
+				displayValues: [],
 				signature: '',
 				titleKey: '',
 			};
 
 			tdNodes.forEach((tdNode: HTMLElement, colIndex: number) => {
+				row.displayValues[colIndex] = tdNode.innerText.trim();
 				if (cols[colIndex].type === 'typesTitle') {
 					row.values[colIndex] = (tdNode.querySelector('a')?.innerText ?? tdNode.textContent ?? '').trim();
 				} else if (['typesDate', 'typesCreatedTime', 'typesLastEditedTime'].includes(cols[colIndex].type)) {
@@ -2664,7 +3268,7 @@ function parseHTMLDatabaseRows(
 
 			rows.push(row);
 		} catch (e) {
-			console.warn('Skipping malformed database row:', e);
+			addImportWarning('Skipping malformed database row: ' + (e instanceof Error ? e.message : String(e)));
 		}
 	});
 	return rows;
@@ -2673,31 +3277,31 @@ function parseHTMLDatabaseRows(
 // Parse a CSV cell value according to the column type
 function parseCSVCellValue(value: string, colType: string, selectValues: Set<string>) {
 	value = value.trim();
+	const normalizedValue =
+		colType === 'typesUrl' || colType === 'typesFile' ? value : stripNotionCSVLinkSuffix(value);
 	switch (colType) {
 		case 'typesTitle': {
-			// CSV title may contain "Page Name (notion-url)" - extract just the name
-			const match = value.match(/^(.+?)\s*\(https?:\/\/.*\)$/);
-			return match ? match[1].trim() : value;
+			return normalizedValue;
 		}
 		case 'typesCheckbox':
-			return value.toLowerCase() === 'yes' || value.toLowerCase() === 'true' || value === '1';
+			return normalizedValue.toLowerCase() === 'yes' || normalizedValue.toLowerCase() === 'true' || normalizedValue === '1';
 		case 'typesDate':
 		case 'typesCreatedTime':
 		case 'typesLastEditedTime': {
-			if (!value) return [];
+			if (!normalizedValue) return [];
 			// Handle date ranges with arrow
-			const times = value.replace('@', '').split('→').map(z => z.trim()).filter(Boolean);
+			const times = splitNotionDateRange(normalizedValue);
 			return times;
 		}
 		case 'typesSelect':
 		case 'typesStatus': {
-			if (!value) return [];
-			selectValues.add(value);
-			return [value];
+			if (!normalizedValue) return [];
+			selectValues.add(normalizedValue);
+			return [normalizedValue];
 		}
 		case 'typesMultipleSelect': {
-			if (!value) return [];
-			const opts = value.split(',').map(v => v.trim()).filter(Boolean);
+			if (!normalizedValue) return [];
+			const opts = normalizedValue.split(',').map(v => v.trim()).filter(Boolean);
 			opts.forEach(o => selectValues.add(o));
 			return opts;
 		}
@@ -2706,7 +3310,7 @@ function parseCSVCellValue(value: string, colType: string, selectValues: Set<str
 			return value.split(',').map(v => v.trim()).filter(Boolean);
 		}
 		default:
-			return value;
+			return normalizedValue;
 	}
 }
 
@@ -2735,6 +3339,7 @@ async function getDatabases(info: NotionResolverInfo, body: HTMLElement, pageNot
 					tableNode,
 					containerNode: divNode,
 					collectionId: getNotionId(divNode.getAttribute('id') ?? '') || getNotionId(tableNode.getAttribute('id') ?? ''),
+					pagePath: pageNotionId ? info.idsToFileInfo[pageNotionId]?.path : '',
 				};
 			})
 			.filter(Boolean) as DatabaseTableInfo[];
@@ -2754,38 +3359,42 @@ async function getDatabases(info: NotionResolverInfo, body: HTMLElement, pageNot
 			tableNode,
 			containerNode,
 			collectionId: getNotionId(tableNode.getAttribute('id') ?? '') || pageNotionId,
+			pagePath: pageNotionId ? info.idsToFileInfo[pageNotionId]?.path : '',
 		}]
 	}
 	const csvCache = new Map<string, { headers: string[]; rows: string[][] }>();
 
 	const parseCSVValue = (value: string, colType: string, selectValues: Set<string>): DatabaseCellValue => {
 		const trimmedValue = value.trim();
+		const normalizedValue =
+			colType === 'typesUrl' || colType === 'typesFile'
+				? trimmedValue
+				: stripNotionCSVLinkSuffix(trimmedValue);
 		switch (colType) {
 			case 'typesTitle': {
-				const match = trimmedValue.match(/^(.+?)\s*\((?:https?:\/\/|[^)]*\.html).*?\)$/);
-				return match ? match[1].trim() : trimmedValue;
+				return normalizedValue;
 			}
 			case 'typesCheckbox':
-				return trimmedValue.toLowerCase() === 'yes' || trimmedValue.toLowerCase() === 'true' || trimmedValue === '1';
+				return normalizedValue.toLowerCase() === 'yes' || normalizedValue.toLowerCase() === 'true' || normalizedValue === '1';
 			case 'typesDate':
 			case 'typesCreatedTime':
 			case 'typesLastEditedTime':
-				return trimmedValue ? splitNotionDateRange(trimmedValue) : [];
+				return normalizedValue ? splitNotionDateRange(normalizedValue) : [];
 			case 'typesSelect':
 			case 'typesStatus':
-				if (!trimmedValue) return [];
-				selectValues.add(trimmedValue);
-				return [trimmedValue];
+				if (!normalizedValue) return [];
+				selectValues.add(normalizedValue);
+				return [normalizedValue];
 			case 'typesMultipleSelect': {
-				if (!trimmedValue) return [];
-				const opts = trimmedValue.split(',').map(v => v.trim()).filter(Boolean);
+				if (!normalizedValue) return [];
+				const opts = normalizedValue.split(',').map(v => v.trim()).filter(Boolean);
 				opts.forEach(opt => selectValues.add(opt));
 				return opts;
 			}
 			case 'typesFile':
 				return trimmedValue ? trimmedValue.split(',').map(v => v.trim()).filter(Boolean) : [];
 			default:
-				return trimmedValue;
+				return normalizedValue;
 		}
 	};
 
@@ -2842,7 +3451,7 @@ async function getDatabases(info: NotionResolverInfo, body: HTMLElement, pageNot
 					csvRows = cached.rows;
 				}
 			} catch (e) {
-				console.warn(`Failed to parse CSV for database "${tableInfo.title}"`, e);
+				addImportWarning(`Failed to parse CSV for database "${tableInfo.title}": ${e instanceof Error ? e.message : String(e)}`);
 			}
 		}
 
@@ -2988,7 +3597,7 @@ async function getDatabases(info: NotionResolverInfo, body: HTMLElement, pageNot
 						}
 					})
 				} catch (e) {
-					console.warn('Skipping malformed database row:', e);
+					addImportWarning('Skipping malformed database row: ' + (e instanceof Error ? e.message : String(e)));
 				}
 			});
 		}
@@ -3009,6 +3618,10 @@ async function getDatabases(info: NotionResolverInfo, body: HTMLElement, pageNot
 					rowid: '',
 					hasRelBlock: false,
 					values: rowValues,
+					displayValues: cols.map((_, colIndex) => {
+						const csvIdx = csvColMapping![colIndex];
+						return csvIdx >= 0 ? stripNotionCSVLinkSuffix(csvRow[csvIdx] || '') : '';
+					}),
 					signature: '',
 					titleKey: '',
 				}, priKeyIndex, signatureColIndices);
@@ -3032,6 +3645,7 @@ async function getDatabases(info: NotionResolverInfo, body: HTMLElement, pageNot
 					rowid: matchedRow?.rowid || linkedBlockID || generateSiYuanID(),
 					hasRelBlock: matchedRow?.hasRelBlock ?? Boolean(linkedBlockID),
 					values: rowValues,
+					displayValues: matchedRow?.displayValues || candidateRow.displayValues,
 					signature: candidateRow.signature,
 					titleKey: candidateRow.titleKey,
 				};
@@ -3045,7 +3659,10 @@ async function getDatabases(info: NotionResolverInfo, body: HTMLElement, pageNot
 			}
 			for (const row of htmlRows) {
 				if (matchedHTMLRows.has(row)) continue;
-				if (!row.notionRowID) continue;
+				if (!row.notionRowID) {
+					addImportWarning(`Dropping unmatched HTML row without Notion ID in database "${tableInfo.title}" (title: "${row.titleKey || 'unknown'}")`);
+					continue;
+				}
 				if (!info.idsToFileInfo[row.notionRowID]) continue;
 				if (csvNotionRowIDs.has(row.notionRowID)) continue;
 				mergedRows.push(row);
@@ -3065,12 +3682,31 @@ async function getDatabases(info: NotionResolverInfo, body: HTMLElement, pageNot
 				});
 			}
 		}
+		const numericDisplayByColumn = inferNumberDisplaySpecs(cols, mergedRows);
+		const rowCollectionPaths = getRowCollectionPathsForRows(info, mergedRows);
+		const notionRowIDs = mergedRows
+			.map((row) => row.notionRowID)
+			.filter((rowID): rowID is string => Boolean(rowID));
+		const pageCollectionPath = tableInfo.pagePath
+			? normalizeNotionLookup(
+				[
+					parseFilePath(tableInfo.pagePath).parent,
+					tableInfo.title,
+				]
+					.filter(Boolean)
+					.join('/'),
+			)
+			: '';
 
 		return {
 			title: tableInfo.title,
 			viewName: tableInfo.viewSpec.name || tableInfo.viewName || tableInfo.title,
 			viewSpec: {
 				...tableInfo.viewSpec,
+				numericDisplayByColumn: {
+					...tableInfo.viewSpec.numericDisplayByColumn,
+					...numericDisplayByColumn,
+				},
 				rowOrder: tableInfo.viewSpec.rowOrder.length > 0
 					? tableInfo.viewSpec.rowOrder
 					: mergedRows.map((row) => getDatabaseRowKey(row)),
@@ -3078,8 +3714,14 @@ async function getDatabases(info: NotionResolverInfo, body: HTMLElement, pageNot
 			cols: cols,
 			rows: mergedRows,
 			databaseIdentity,
+			csvCollectionPath: csvInfo?.normalizedCollectionPath ?? '',
+			pageCollectionPath,
+			rowCollectionPaths,
+			notionRowIDs,
 		} satisfies BuiltDatabaseTable;
 	}))
+	normalizeBuiltDatabaseIdentities(tables);
+	tables.forEach((table) => harmonizeBuiltDatabaseIdentity(info, table));
 	const renderedViews = tables.map((table) => {
 		const sharedState = getOrCreateSharedDatabaseState(info, table);
 		const view = mergeBuiltTableIntoSharedState(info, sharedState, table);

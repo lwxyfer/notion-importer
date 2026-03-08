@@ -41,6 +41,7 @@ export type MarkdownInfo = {
 	inlineStyleMarkers?: Record<string, InlineStyleMarker>;
 	coverImage?: string;
 	pageIcon?: string;
+	warnings?: string[];
 }
 
 export type InlineStyleMarker = {
@@ -73,6 +74,12 @@ export type NotionImageDisplay = {
 	align?: 'left' | 'center' | 'right' | 'stretch';
 };
 
+export type NotionNumberDisplaySpec = {
+	roundedUpToUnit: boolean;
+	numberFormat: string;
+	sampleDisplay?: string;
+};
+
 export type NotionDatabaseViewSpec = {
 	name: string;
 	filters: NotionDatabaseViewFilter[];
@@ -80,6 +87,7 @@ export type NotionDatabaseViewSpec = {
 	groupBy: NotionDatabaseViewGroupBy | null;
 	visibleColumnNames: string[];
 	rowOrder: string[];
+	numericDisplayByColumn: Record<string, NotionNumberDisplaySpec>;
 };
 
 export type ImportLogLevel = 'info' | 'warn' | 'error';
@@ -212,6 +220,10 @@ export class NotionResolverInfo {
 	csvFilesByCollectionPath: Record<string, NotionCSVFileInfo[]> = {};
 	csvFilesByTitle: Record<string, NotionCSVFileInfo[]> = {};
 	attributeViewsByDatabaseIdentity: Record<string, any> = {};
+	attributeViewsByCorrelationKey: Record<string, any> = {};
+	attributeViewsByNormalizedTitle: Record<string, any[]> = {};
+	databaseIdentityAliases: Record<string, string> = {};
+	databaseCorrelationGroupsByTitle: Record<string, any[]> = {};
 	attachmentPath: string;
 	singleLineBreaks: boolean;
 

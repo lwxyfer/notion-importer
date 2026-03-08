@@ -127,12 +127,34 @@ function sanitizeNotionDateInput(value: string) {
 		.trim();
 }
 
-function createLocalDate(year: number, month: number, day = 1, hours = 0, minutes = 0) {
-	const date = new Date(year, month, day, hours, minutes, 0, 0);
-	return isNaN(date.getTime()) ? null : date;
+function createDateValue(year: number, month: number, day = 1, hours?: number, minutes?: number) {
+	if (day < 1 || day > 31 || month < 0 || month > 11) return null;
+	const hasExplicitTime = hours !== undefined || minutes !== undefined;
+	const date = hasExplicitTime
+		? new Date(year, month, day, hours ?? 0, minutes ?? 0, 0, 0)
+		: new Date(Date.UTC(year, month, day, 12, 0, 0, 0));
+	if (isNaN(date.getTime())) return null;
+	// Reject overflowed dates (e.g. Feb 30 → Mar 2)
+	const expectedMonth = hasExplicitTime ? date.getMonth() : date.getUTCMonth();
+	if (expectedMonth !== month) return null;
+	return date;
 }
 
 export type NotionDateOrder = 'auto' | 'dmy' | 'mdy';
+
+function hasExplicitDateShape(cleaned: string, normalized: string) {
+	if (/^\d{4}$/.test(normalized)) return true;
+	if (/^\d{1,2}[/-]\d{4}$/.test(normalized)) return true;
+	if (/^\d{4}[/-]\d{1,2}$/.test(normalized)) return true;
+	if (/^\d{1,2}[/-]\d{1,2}[/-]\d{4}(?:[ t]\d{1,2}(?::\d{2})?)?$/i.test(cleaned)) return true;
+	if (/^\d{4}[/-]\d{1,2}[/-]\d{1,2}(?:[ t]\d{1,2}(?::\d{2})?)?$/i.test(cleaned)) return true;
+	if (/^\d{1,2}\s+[a-z.]+\s+\d{4}(?:\s+\d{1,2}(?::\d{2})?)?$/i.test(normalized)) return true;
+	if (/^[a-z.]+\s+\d{1,2}\s+\d{4}(?:\s+\d{1,2}(?::\d{2})?)?$/i.test(normalized)) return true;
+	if (/^[a-z.]+\s+\d{4}$/i.test(normalized)) return true;
+	if (/^\d{4}\s+[a-z.]+$/i.test(normalized)) return true;
+	if (/^\d{4}-\d{2}-\d{2}t\d{2}:\d{2}/i.test(cleaned)) return true;
+	return false;
+}
 
 export function detectDateOrderPreference(values: string[]): NotionDateOrder {
 	let dmyScore = 0;
@@ -159,6 +181,7 @@ export function detectDateOrderPreference(values: string[]): NotionDateOrder {
 export function parseNotionDateValue(rawValue: string, preferredOrder: NotionDateOrder = 'auto'): Date | null {
 	const cleaned = sanitizeNotionDateInput(rawValue);
 	if (!cleaned) return null;
+	if (/^[+-]?\d+(?:[.,]\d+)?$/.test(cleaned)) return null;
 
 	const normalized = cleaned
 		.normalize('NFD')
@@ -167,7 +190,7 @@ export function parseNotionDateValue(rawValue: string, preferredOrder: NotionDat
 
 	let match = normalized.match(/^(\d{4})$/);
 	if (match) {
-		return createLocalDate(Number(match[1]), 0, 1);
+		return createDateValue(Number(match[1]), 0, 1);
 	}
 
 	match = normalized.match(/^(\d{1,2})[/-](\d{4})$/);
@@ -175,7 +198,7 @@ export function parseNotionDateValue(rawValue: string, preferredOrder: NotionDat
 		const month = Number(match[1]);
 		const year = Number(match[2]);
 		if (month >= 1 && month <= 12) {
-			return createLocalDate(year, month - 1, 1);
+			return createDateValue(year, month - 1, 1);
 		}
 	}
 
@@ -184,7 +207,7 @@ export function parseNotionDateValue(rawValue: string, preferredOrder: NotionDat
 		const year = Number(match[1]);
 		const month = Number(match[2]);
 		if (month >= 1 && month <= 12) {
-			return createLocalDate(year, month - 1, 1);
+			return createDateValue(year, month - 1, 1);
 		}
 	}
 
@@ -192,7 +215,7 @@ export function parseNotionDateValue(rawValue: string, preferredOrder: NotionDat
 	if (match) {
 		const month = notionMonthLookup[match[1].replace(/\./g, '')];
 		if (month !== undefined) {
-			return createLocalDate(Number(match[2]), month, 1);
+			return createDateValue(Number(match[2]), month, 1);
 		}
 	}
 
@@ -200,7 +223,7 @@ export function parseNotionDateValue(rawValue: string, preferredOrder: NotionDat
 	if (match) {
 		const month = notionMonthLookup[match[2].replace(/\./g, '')];
 		if (month !== undefined) {
-			return createLocalDate(Number(match[1]), month, 1);
+			return createDateValue(Number(match[1]), month, 1);
 		}
 	}
 
@@ -209,19 +232,20 @@ export function parseNotionDateValue(rawValue: string, preferredOrder: NotionDat
 		const first = Number(match[1]);
 		const second = Number(match[2]);
 		const year = Number(match[3]);
-		const hours = match[4] ? Number(match[4]) : 0;
-		const minutes = match[5] ? Number(match[5]) : 0;
+		const hasTime = match[4] !== undefined || match[5] !== undefined;
+		const hours = match[4] ? Number(match[4]) : undefined;
+		const minutes = match[5] ? Number(match[5]) : undefined;
 
 		if (first > 12 && second <= 12) {
-			return createLocalDate(year, second - 1, first, hours, minutes);
+			return createDateValue(year, second - 1, first, hasTime ? hours : undefined, hasTime ? minutes : undefined);
 		}
 		if (second > 12 && first <= 12) {
-			return createLocalDate(year, first - 1, second, hours, minutes);
+			return createDateValue(year, first - 1, second, hasTime ? hours : undefined, hasTime ? minutes : undefined);
 		}
 		if (preferredOrder === 'mdy') {
-			return createLocalDate(year, first - 1, second, hours, minutes);
+			return createDateValue(year, first - 1, second, hasTime ? hours : undefined, hasTime ? minutes : undefined);
 		}
-		return createLocalDate(year, second - 1, first, hours, minutes);
+		return createDateValue(year, second - 1, first, hasTime ? hours : undefined, hasTime ? minutes : undefined);
 	}
 
 	match = normalized.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:\s+(\d{1,2})(?::(\d{2}))?)?$/);
@@ -229,9 +253,10 @@ export function parseNotionDateValue(rawValue: string, preferredOrder: NotionDat
 		const year = Number(match[1]);
 		const month = Number(match[2]);
 		const day = Number(match[3]);
-		const hours = match[4] ? Number(match[4]) : 0;
-		const minutes = match[5] ? Number(match[5]) : 0;
-		return createLocalDate(year, month - 1, day, hours, minutes);
+		const hasTime = match[4] !== undefined || match[5] !== undefined;
+		const hours = match[4] ? Number(match[4]) : undefined;
+		const minutes = match[5] ? Number(match[5]) : undefined;
+		return createDateValue(year, month - 1, day, hasTime ? hours : undefined, hasTime ? minutes : undefined);
 	}
 
 	match = normalized.match(/^(\d{1,2})\s+([a-z.]+)\s+(\d{4})(?:\s+(\d{1,2})(?::(\d{2}))?)?$/);
@@ -239,10 +264,11 @@ export function parseNotionDateValue(rawValue: string, preferredOrder: NotionDat
 		const day = Number(match[1]);
 		const month = notionMonthLookup[match[2].replace(/\./g, '')];
 		const year = Number(match[3]);
-		const hours = match[4] ? Number(match[4]) : 0;
-		const minutes = match[5] ? Number(match[5]) : 0;
+		const hasTime = match[4] !== undefined || match[5] !== undefined;
+		const hours = match[4] ? Number(match[4]) : undefined;
+		const minutes = match[5] ? Number(match[5]) : undefined;
 		if (month !== undefined) {
-			return createLocalDate(year, month, day, hours, minutes);
+			return createDateValue(year, month, day, hasTime ? hours : undefined, hasTime ? minutes : undefined);
 		}
 	}
 
@@ -251,14 +277,20 @@ export function parseNotionDateValue(rawValue: string, preferredOrder: NotionDat
 		const month = notionMonthLookup[match[1].replace(/\./g, '')];
 		const day = Number(match[2]);
 		const year = Number(match[3]);
-		const hours = match[4] ? Number(match[4]) : 0;
-		const minutes = match[5] ? Number(match[5]) : 0;
+		const hasTime = match[4] !== undefined || match[5] !== undefined;
+		const hours = match[4] ? Number(match[4]) : undefined;
+		const minutes = match[5] ? Number(match[5]) : undefined;
 		if (month !== undefined) {
-			return createLocalDate(year, month, day, hours, minutes);
+			return createDateValue(year, month, day, hasTime ? hours : undefined, hasTime ? minutes : undefined);
 		}
 	}
 
-	const date = new Date(cleaned);
+	if (!hasExplicitDateShape(cleaned, normalized)) return null;
+
+	const timestamp = Date.parse(cleaned);
+	if (Number.isNaN(timestamp)) return null;
+
+	const date = new Date(timestamp);
 	return isNaN(date.getTime()) ? null : date;
 }
 
@@ -317,7 +349,7 @@ export function parseEuropeanNumber(raw: string): { value: number; formatted: st
 }
 
 // Check if a timestamp represents a pure date (no time component)
-export function timestampIsPrueDate(timestamp: number) {
+export function timestampIsPureDate(timestamp: number) {
 	const date = new Date(timestamp);
 	return date.getHours() === 0 && date.getMinutes() === 0 && date.getSeconds() === 0 && date.getMilliseconds() === 0;
 }

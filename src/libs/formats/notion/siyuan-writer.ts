@@ -758,10 +758,14 @@ export async function runNotionImport(files: FileList | File[], reporter: Notion
 			}
 			reporter.setCurrentItem(document.fileInfo.displayTitle || document.fileInfo.title);
 			try {
-				markdownCache.set(
-					document.notionID,
-					await readToMarkdown(plan.registry.resolverInfo, document.entry, document.notionID),
-				);
+				const markdownInfo = await readToMarkdown(plan.registry.resolverInfo, document.entry, document.notionID);
+				if (markdownInfo.warnings?.length) {
+					for (const warning of markdownInfo.warnings) {
+						stats.errors += 1;
+						reporter.log('warn', `[${document.fileInfo.title}] ${warning}`);
+					}
+				}
+				markdownCache.set(document.notionID, markdownInfo);
 			} catch (error: any) {
 				stats.errors += 1;
 				reporter.log('error', `Failed to analyze "${document.fileInfo.title}": ${error?.message || error}`);

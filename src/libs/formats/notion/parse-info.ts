@@ -48,6 +48,9 @@ export async function parseFileInfo(info: NotionResolverInfo, file: ZipEntryFile
 
 		const dom = parseHTML(text);
 		const body = dom.querySelector('body');
+		if (!body) {
+			throw new Error('no body found for: ' + filepath);
+		}
 		const children = body.children;
 		let id: string | undefined;
 		for (let i = 0; i < children.length; i++) {

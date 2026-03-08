@@ -1,6 +1,6 @@
 {
   "name": "notion-importer",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "description": "Import Notion HTML exports into SiYuan with deterministic hierarchy, databases, media, and style preservation",
   "repository": "https://github.com/FEUAZUR/notion-importer",

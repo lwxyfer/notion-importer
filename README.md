@@ -3,7 +3,7 @@
 [![SiYuan](https://img.shields.io/badge/SiYuan-v3.0.12+-blue)](https://b3log.org/siyuan)
 [![Downloads](https://img.shields.io/github/downloads/FEUAZUR/notion-importer/total)](https://github.com/FEUAZUR/notion-importer/releases)
 
-# Notion Importer for SiYuan V2
+# Notion Importer for SiYuan
 
 A SiYuan plugin that imports Notion HTML exports into SiYuan with deterministic hierarchy reconstruction, stable database import, and preserved styles/media.
 
@@ -25,6 +25,7 @@ A SiYuan plugin that imports Notion HTML exports into SiYuan with deterministic 
 ## Screenshots
 
 ### Import dialog
+
 ![Import Dialog](asset/screenshot-idle.png)
 
 ## Usage
@@ -45,23 +46,23 @@ A SiYuan plugin that imports Notion HTML exports into SiYuan with deterministic 
 
 ## Supported Notion Elements
 
-| Element | Support |
-|---------|---------|
-| Pages & subpages | Full hierarchy preserved |
-| Databases (tables) | Full with all column types |
-| Images (inline & standalone) | Imported as SiYuan assets |
-| Videos | Imported with player controls |
-| Audio | Imported with player controls |
-| File attachments | Imported as SiYuan assets |
-| Cover/banner images | Set as SiYuan document banner |
-| Page icons | Set as SiYuan document icon |
-| Callouts | Converted to blockquotes |
-| Code blocks | Preserved with language |
-| Math equations | Preserved (KaTeX) |
-| Toggle headings | Converted to headings |
-| Checkboxes / To-do lists | Preserved |
-| Bookmarks / Embeds | Converted to blockquotes |
-| Internal links | Converted to SiYuan bidirectional links |
+| Element                      | Support                                 |
+| ---------------------------- | --------------------------------------- |
+| Pages & subpages             | Full hierarchy preserved                |
+| Databases (tables)           | Full with all column types              |
+| Images (inline & standalone) | Imported as SiYuan assets               |
+| Videos                       | Imported with player controls           |
+| Audio                        | Imported with player controls           |
+| File attachments             | Imported as SiYuan assets               |
+| Cover/banner images          | Set as SiYuan document banner           |
+| Page icons                   | Set as SiYuan document icon             |
+| Callouts                     | Converted to blockquotes                |
+| Code blocks                  | Preserved with language                 |
+| Math equations               | Preserved (KaTeX)                       |
+| Toggle headings              | Converted to headings                   |
+| Checkboxes / To-do lists     | Preserved                               |
+| Bookmarks / Embeds           | Converted to blockquotes                |
+| Internal links               | Converted to SiYuan bidirectional links |
 
 ## Build
 

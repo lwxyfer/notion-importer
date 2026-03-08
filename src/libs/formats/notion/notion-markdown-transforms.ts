@@ -36,6 +36,8 @@ export function convertColorMarkers(markdown: string): string {
 }
 
 export function convertColumnMarkers(markdown: string): string {
+	// Marker names are from Notion's perspective (ROW = row of columns, COL = single column)
+	// SiYuan uses inverted names ({{{col = horizontal layout, {{{row = vertical content)
 	let output = markdown;
 	output = output.replace(/SYCOLROWSTART/g, '\n{{{col\n');
 	output = output.replace(/SYCOLROWEND/g, '\n}}}\n');
