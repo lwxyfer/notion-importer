@@ -736,10 +736,10 @@ export async function runNotionImport(
 		reporter.updateProgress(currentProgress, totalProgress);
 
 		for (const document of plan.documents) {
-			reporter.setCurrentItem(document.fileInfo.displayTitle || document.fileInfo.title);
+			reporter.setCurrentItem((document as any).finalTitle || document.fileInfo.displayTitle || document.fileInfo.title);
 			const shouldSkip = !document.fileInfo.hasContent && !parentCount.has(document.notionID);
 			if (shouldSkip) {
-				reporter.log('info', `Skipping empty leaf page: "${document.fileInfo.displayTitle || document.fileInfo.title}"`);
+				reporter.log('info', `Skipping empty leaf page: "${(document as any).finalTitle || document.fileInfo.displayTitle || document.fileInfo.title}"`);
 				bumpProgress();
 				continue;
 			}
@@ -796,7 +796,7 @@ export async function runNotionImport(
 				bumpProgress();
 				continue;
 			}
-			reporter.setCurrentItem(document.fileInfo.displayTitle || document.fileInfo.title);
+			reporter.setCurrentItem((document as any).finalTitle || document.fileInfo.displayTitle || document.fileInfo.title);
 			try {
 				const markdownInfo = await readToMarkdown(plan.registry.resolverInfo, document.entry, document.notionID);
 				if (markdownInfo.warnings?.length) {
@@ -823,7 +823,7 @@ export async function runNotionImport(
 				bumpProgress();
 				return;
 			}
-			reporter.setCurrentItem(document.fileInfo.displayTitle || document.fileInfo.title);
+			reporter.setCurrentItem((document as any).finalTitle || document.fileInfo.displayTitle || document.fileInfo.title);
 			try {
 				expectedFolds += await writeDocumentContent(client, reporter, document, plan, markdownCache, uploadedAttributeViewIDs, stats);
 			} catch (error: any) {
