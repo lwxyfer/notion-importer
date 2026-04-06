@@ -687,7 +687,12 @@ async function rebuildResidualHtmlDocuments(
 	return rebuiltDocuments;
 }
 
-export async function runNotionImport(files: FileList | File[], reporter: NotionImportReporter, notebookName: string = 'Notion') {
+export async function runNotionImport(
+	files: FileList | File[],
+	reporter: NotionImportReporter,
+	notebookName: string = 'Notion',
+	importMode: ImportMode = 'replace',
+) {
 	clearSiYuanIDCache();
 	const stats: ImportStats = { docs: 0, attachments: 0, databases: 0, errors: 0 };
 	const client = new Client({});
@@ -707,14 +712,24 @@ export async function runNotionImport(files: FileList | File[], reporter: Notion
 		reporter.log('info', 'Scanning Notion HTML export...');
 
 		const registry = await collectNotionExport(pickedFiles, reporter);
-		const plan = buildSiYuanWritePlan(registry, notebookName);
+
+		reporter.setPhase('creating');
+		const notebookID = await ensureNotebook(client, reporter, notebookName, importMode);
+
+		let existingTitles: Set<string> | undefined;
+		if (importMode === 'incremental') {
+			const listRes = await client.lsNotebooks({});
+			const existing = listRes?.data?.notebooks?.find((n: any) => n.name === notebookName);
+			if (existing) {
+				existingTitles = await getExistingPageTitles(client, existing.id as string);
+			}
+		}
+
+		const plan = buildSiYuanWritePlan(registry, notebookName, existingTitles);
 		reporter.log(
 			'info',
 			`Manifest ready: ${plan.documents.length} HTML document(s), ${plan.attachments.length} attachment(s), ${Object.keys(registry.resolverInfo.csvFileInfos).length} CSV database file(s).`,
 		);
-
-		reporter.setPhase('creating');
-		const notebookID = await ensureNotebook(client, reporter, plan.notebookName);
 		const parentCount = buildParentCount(plan);
 		totalProgress = plan.documents.length + plan.attachments.length + plan.documents.length + plan.documents.length;
 		currentProgress = 0;
